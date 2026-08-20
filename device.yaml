@@ -1,0 +1,38 @@
+# Galvo hardware limits. Change this file, not the code, when the rig changes.
+#
+# This describes only where the beam can physically go. Which part of a surface
+# you aim at lives in surfaces.csv, and the mapping lives in calib_<surface>.json.
+
+dac_max: 4095
+center: [2400, 2688]     # DAC value where the beam sits at rest (measured)
+park: [100, 100]         # beam dump direction
+
+# Reachable area, measured 2026-08-12 by walking the beam to the edges.
+# Beyond this quad the left and lower-right corners start getting clipped.
+reachable_quad:
+  - [900, 900]           # lower left
+  - [250, 4095]          # upper left
+  - [4095, 4095]         # upper right
+  - [3800, 800]          # lower right
+
+# Safe fence: the largest axis-aligned rectangle inside that quad
+# (2900 x 3150 units, centred on 2350, 2500).
+# Note that centre is not the same as `center` above, so a symmetric amplitude
+# around the rest position cannot use the whole range -- 1400 is its limit.
+safe_box:
+  x: [900, 3800]
+  y: [925, 4075]
+
+# Which reference the fence uses:
+#   device  safe_box only. Wide; aiming outside the calibrated grid is allowed
+#           and only warned about, since the polynomial extrapolates there.
+#   calib   galvo_bounds from calib_<surface>.json plus a margin. Narrow.
+#   both    the intersection. Most conservative.
+fence_mode: device
+fence_margin: 0.05
+
+# Dark points inserted between shapes when several are shown at once.
+# At 20 kpps one point is 50 us, and the laser module needs 0.1-1 ms to go
+# dark, so 24 points (1.2 ms) is safe. Lower buys refresh rate; too low and a
+# faint line shows up between shapes. Two shapes: 24 -> 49 Hz, 8 -> 54 Hz.
+blank_points: 24

@@ -1,0 +1,16 @@
+numpy>=2.0
+opencv-python>=4.9
+PyYAML>=6.0
+rapidfuzz>=3.0
+hgtk>=0.2
+pillow>=10.0
+
+# Speech. Only needed for the live demo; --no-voice and --sim run without them.
+sounddevice>=0.4
+soundfile>=0.12
+mlx-whisper>=0.4        # Apple Silicon, Metal accelerated
+# faster-whisper>=1.0   # portable fallback, select with --engine faster
+
+# The Helios DAC library ships in this directory as libHeliosLaserDAC.dylib and
+# is found automatically. Set HELIOS_LIB only if you keep it elsewhere.
+# Source: https://github.com/Grix/helios_dac
