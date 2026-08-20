@@ -13,6 +13,7 @@ import sys
 import time
 import numpy as np
 import yaml
+from paths import data_path
 
 CLIPS = "clips"
 
@@ -35,8 +36,8 @@ def clips_dir_for(parts_yaml: str) -> str:
 
 def cmd_record(parts_yaml="parts.yaml", per_part=2, sec=3.5, clips_dir=None):
     import sounddevice as sd, soundfile as sf
-    clips_dir = clips_dir or clips_dir_for(parts_yaml)
-    spec = yaml.safe_load(open(parts_yaml))["parts"]
+    clips_dir = data_path(clips_dir or clips_dir_for(parts_yaml))
+    spec = yaml.safe_load(open(data_path(parts_yaml)))["parts"]
     os.makedirs(clips_dir, exist_ok=True)
     labels = {}
     print(f"[i] {parts_yaml} → {clips_dir}/")
@@ -61,14 +62,14 @@ def cmd_run(models, parts_yaml="parts.yaml", clips_dir=None):
     from match import load_parts, best_match
     from speech import ASR
 
-    clips_dir = clips_dir or clips_dir_for(parts_yaml)
+    clips_dir = data_path(clips_dir or clips_dir_for(parts_yaml))
     labels_path = os.path.join(clips_dir, "labels.json")
     if not os.path.exists(labels_path):
         print(f"[!] {labels_path} 없음. 먼저 record 를 실행하세요:")
         print(f"    python3 bench_asr.py record --parts {parts_yaml}")
         return
     labels = json.load(open(labels_path))
-    parts = load_parts(yaml.safe_load(open(parts_yaml))["parts"])
+    parts = load_parts(yaml.safe_load(open(data_path(parts_yaml)))["parts"])
 
     rows = []
     for m in models:

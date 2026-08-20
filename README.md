@@ -81,16 +81,32 @@ python3 app.py --sim       # no hardware: draws to a window
 python3 app.py             # live
 ```
 
+Code and data are separate. Everything a session produces or consumes —
+captures, calibrations, the part dictionary, logs — lives in `data/` and is not
+tracked, so a fresh clone has the code but no calibration. Point `LUXMEA_DATA`
+somewhere else to keep one folder per demo object.
+
 `app.py --no-voice` gives you number-key control instead of speech, which is
 useful while filming or when the room is too loud to trust the microphone.
+
+There is also a small GUI for running it at a booth, where nobody wants to type
+flags between demos:
+
+```bash
+python3 launcher.py
+```
+
+It finds the calibration and dictionary files in the folder, remembers what you
+picked, streams the log into the window, and stops the app with SIGINT so the
+beam parks on the way out.
 
 Hardware runs need a Helios DAC. `libHeliosLaserDAC.dylib` ships in this
 directory and is picked up automatically; set `HELIOS_LIB` only if you keep it
 somewhere else.
 
-Setting up a new object takes four steps — aim, capture, fit, register — all
-documented in **[MANIFEST.md](MANIFEST.md)**, which also lists what every file
-in here is for.
+Setting up a new object takes four steps — aim, capture, fit, register — which
+is what fills `data/`. All of it is in **[MANIFEST.md](MANIFEST.md)**, along
+with what every file in here is for.
 
 ## Results
 
@@ -116,8 +132,13 @@ accuracy is the wrong metric.
 
 `medium` won on both accuracy and consistency and is the default. The largest
 model was worse and far more variable, mostly because it hallucinated long
-repeated phrases on quiet segments. Raw output is in
+repeated phrases on quiet segments — we now drop segments that never rose above
+the noise floor rather than sending them to the decoder at all. Raw output is in
 [`bench_asr_result.md`](bench_asr_result.md); rerun it with `bench_asr.py`.
+
+Everything above runs locally. `--engine groq` sends audio to a cloud endpoint
+instead, which is there for rooms too noisy for the local model; it needs
+`GROQ_API_KEY` and, obviously, a network.
 
 ## Safety
 
@@ -142,8 +163,8 @@ envelope that was tested. The beam parks into a dump when idle.
 
 | | |
 |---|---|
-| Kristine Yoonseo Lee | hardware design and fabrication |
-| Youngchan Ryu | circuit and software |
+| Lee Yunseo | hardware design and fabrication |
+| Ryu Youngchan | software |
 
 ## References
 

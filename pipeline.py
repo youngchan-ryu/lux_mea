@@ -22,6 +22,7 @@ import numpy as np
 
 import extract_dots as ED
 import calib as CB
+from paths import data_path, ensure_data
 
 
 def make_plate(video: str, out_path: str) -> tuple[int, int]:
@@ -251,7 +252,7 @@ def main():
                     help="품질 검사 실패해도 계속 진행")
     a = ap.parse_args()
 
-    rows = read_log(a.log)
+    rows = read_log(data_path(a.log))
     surfaces, groups = group_by_surface(rows, a.surface)
     multi = len(surfaces) > 1
     print(f"[i] 격자점 {len(rows)}개 / 표면 {len(surfaces)}개")
@@ -261,10 +262,11 @@ def main():
     grid_mm = parse_per_surface(a.grid_mm, surfaces, "--grid-mm")
     pitch_mm = parse_per_surface(a.pitch_mm, surfaces, "--pitch-mm")
 
+    ensure_data()
     plate = "plate.jpg" if multi else f"plate_{a.surface}.jpg"
-    W, H = make_plate(a.video, plate)
+    W, H = make_plate(data_path(a.video), data_path(plate))
 
-    cap = cv2.VideoCapture(a.video)
+    cap = cv2.VideoCapture(data_path(a.video))
     segs = ED.scan_segments(cap, a.green)
     cap.release()
 
@@ -314,14 +316,14 @@ def main():
         galvo = np.array(groups[s])
         pairs, cal = f"pairs_{s}.csv", f"calib_{s}.json"
 
-        with open(pairs, "w") as f:
+        with open(data_path(pairs), "w") as f:
             f.write(f"# size,{W},{H}\n")
             f.write("galvo_x,galvo_y,img_x,img_y\n")
             for (gx, gy), (ix, iy) in zip(galvo, imgpts):
                 f.write(f"{gx:.1f},{gy:.1f},{ix:.3f},{iy:.3f}\n")
         print(f"[i] {pairs} 저장 ({len(imgpts)}점)")
 
-        v = cv2.imread(plate)
+        v = cv2.imread(data_path(plate))
         for k, (ix, iy) in enumerate(imgpts):
             c = (int(ix), int(iy))
             cv2.circle(v, c, 12, (0, 255, 0), 2)
@@ -331,7 +333,7 @@ def main():
                       (int(imgpts[:, 0].max()), int(imgpts[:, 1].max())),
                       (0, 200, 255), 2)
         rev = f"review_{s}.png"
-        cv2.imwrite(rev, v)
+        cv2.imwrite(data_path(rev), v)
         print(f"[i] {rev} 저장 — 0번이 첫 격자점인지, 주황 사각형이 대상을 덮는지 확인")
 
         gm = grid_mm[s]
@@ -346,7 +348,7 @@ def main():
                   "(firstlight.py gridall --surface %s 로 재서 넣을 것)" % s)
         coverage_report(imgpts, W, H, mmpp, multi)
 
-        fit(pairs, cal, mmpp)
+        fit(data_path(pairs), data_path(cal), mmpp)
 
     print(f"\n{'='*62}")
     if multi:

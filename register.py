@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import cv2
 import yaml
+from paths import data_path, ensure_data
 
 parts = {}
 R_DEFAULT = 0.03
@@ -111,7 +112,7 @@ def main():
     if "--edit" in sys.argv:
         out = sys.argv[sys.argv.index("--edit") + 1]
         try:
-            parts.update(yaml.safe_load(open(out))["parts"])
+            parts.update(yaml.safe_load(open(data_path(out)))["parts"])
             print(f"[i] 기존 {len(parts)}개 로드")
         except Exception:
             pass
@@ -125,7 +126,7 @@ def main():
             print(f"[!] 기존 파일에 표면 태그 {sorted(tagged)} 가 있는데 --surface 를 안 줬다.")
             print("    지금 찍는 부위에는 태그가 안 붙어 app.py 가 이중표면으로 못 읽는다.")
 
-    base = cv2.imread(path)
+    base = cv2.imread(data_path(path))
     if base is None:
         print(f"[!] 이미지를 못 읽음: {path}"); return
     h, w = base.shape[:2]
@@ -181,7 +182,8 @@ def main():
         if k == 27:
             print("[i] 저장 없이 종료"); break
         if k == ord("s"):
-            with open(out, "w") as f:
+            ensure_data()
+            with open(data_path(out), "w") as f:
                 yaml.safe_dump({"object": "mockup_v1", "parts": parts}, f,
                                allow_unicode=True, sort_keys=False)
             print(f"[i] {out} 저장 ({len(parts)}개 부위)"); break

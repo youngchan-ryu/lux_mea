@@ -13,6 +13,7 @@ import ctypes
 import os
 import time
 import numpy as np
+from paths import data_path
 
 DAC_MAX = 4095
 PPS = 20000
@@ -98,7 +99,7 @@ class Fence:
         cal = None
         try:
             import json
-            pts = np.array(json.load(open(calib_json)).get("galvo_bounds", []), float)
+            pts = np.array(json.load(open(data_path(calib_json))).get("galvo_bounds", []), float)
             if len(pts) == 2:
                 cal = cls(pts[0], pts[1], margin)
         except Exception:
@@ -322,10 +323,10 @@ def make_output(sim=True, calib_json="calib.json", bg=None):
     if isinstance(calib_json, dict):
         if not calib_json:
             raise ValueError("calib_json dict 가 비어 있다")
-        profiles = {s: _load_profile(p) for s, p in calib_json.items()}
+        profiles = {s: _load_profile(data_path(p)) for s, p in calib_json.items()}
         print(f"[i] 출력 프로파일 {list(profiles)}")
     else:
-        profiles = {None: _load_profile(calib_json)}
+        profiles = {None: _load_profile(data_path(calib_json))}
 
     if sim:
         return SimOut(profiles, bg)

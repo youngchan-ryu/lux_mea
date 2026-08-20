@@ -19,6 +19,7 @@ import sys
 import termios
 import time
 import tty
+from paths import data_path, ensure_data
 
 DAC_MAX = 4095
 CENTERX = 1800
@@ -139,6 +140,7 @@ def load_plan(path):
 
 
 def save_plan(path, plan):
+    ensure_data()
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(PLAN_FIELDS)
@@ -232,7 +234,7 @@ def cmd_aim(h, a):
     if not surfaces:
         sys.exit("[!] --surfaces poster,mockup 형식으로 표면 이름을 줄 것")
 
-    plan = load_plan(a.plan)
+    plan = load_plan(data_path(a.plan))
     for s in surfaces:
         plan.setdefault(s, [CENTERX, CENTERY, AMPLITUDE // 2, AMPLITUDE // 2])
 
@@ -290,16 +292,16 @@ def cmd_aim(h, a):
             elif k == "p":
                 status()
             elif k == "v":
-                save_plan(a.plan, plan)
+                save_plan(data_path(a.plan), plan)
 
-    save_plan(a.plan, plan)
+    save_plan(data_path(a.plan), plan)
     print("[i] 이제: python3 firstlight.py grid --surface <이름>  "
           "(두 번째부터 --append)")
 
 
 def resolve_region(a):
     """Region for the grid: explicit flags, else surfaces.csv, else defaults."""
-    plan = load_plan(a.plan)
+    plan = load_plan(data_path(a.plan))
     if a.surface and a.surface in plan:
         cx, cy, ax, ay = plan[a.surface]
         src = f"{a.plan}[{a.surface}]"
@@ -362,13 +364,14 @@ def cmd_grid(h, a):
                 h.write([pt(x, y, on=False)] * 64, pps=1000)
                 time.sleep(0.03)
 
-    exists = os.path.exists(a.log)
-    with open(a.log, "a" if a.append else "w") as f:
+    ensure_data()
+    exists = os.path.exists(data_path(a.log))
+    with open(data_path(a.log), "a" if a.append else "w") as f:
         if not (a.append and exists):
             f.write("t_sec,galvo_x,galvo_y,surface\n")
         for ts, x, y in pairs:
             f.write(f"{ts:.3f},{x},{y},{surface}\n")
-    total = sum(1 for ln in open(a.log) if ln[:1].isdigit())
+    total = sum(1 for ln in open(data_path(a.log)) if ln[:1].isdigit())
     print(f"[i] {a.log} 저장 — 이번 {len(pairs)}점, 누적 {total}점")
     print("[i] 다음 표면: 같은 녹화 상태에서 "
           f"'python3 firstlight.py grid --surface <이름> --append'")

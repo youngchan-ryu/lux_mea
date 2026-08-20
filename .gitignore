@@ -1,0 +1,7 @@
+# Runtime data: captures, calibrations, dictionaries, logs.
+# Produced per demo object, not part of the source. See MANIFEST.md.
+/data/
+
+__pycache__/
+*.pyc
+.DS_Store

@@ -105,22 +105,38 @@ editing the dictionary later never silently changes what lights up.
 | `bench_asr.py` | Compare ASR models by end-to-end hit rate |
 | `probe.py` | What OpenCV actually reads from a video file (HDR debugging) |
 | `test_match.py` | Regression test for matching and links |
+| `launcher.py` | tkinter GUI for running `app.py` without typing flags |
+| `autoregister.py` | Draft parts.yaml entries from OCR or object detection |
 
-### Configuration and data
+### Configuration
 
 | | |
 |---|---|
+| `paths.py` | Resolves data file names into `data/` |
 | `device.yaml` | Galvo limits: centre, reachable area, safe fence, blanking length |
+| `libHeliosLaserDAC.dylib` | Helios DAC library, found automatically |
+
+### Data — `data/`, not tracked
+
+Everything below is produced by the setup steps above and is specific to one
+object in one room, so it is gitignored. A fresh clone has no `data/`; run the
+four steps to create it, or set `LUXMEA_DATA` to a folder you already have.
+
+Bare filenames on the command line resolve into `data/`, so `--parts parts.yaml`
+finds `data/parts.yaml`. Pass a path with a separator in it to escape that.
+
+| | |
+|---|---|
 | `parts.yaml` | The dictionary: aliases, anchors, shapes, `surface:`, `link:` |
 | `surfaces.csv` | Aim regions per surface |
 | `grid_log.csv` | Galvo coordinates logged during capture |
 | `pairs_*.csv` | Galvo/image correspondences per surface |
 | `calib_*.json` | Fitted maps, image size, galvo bounds |
 | `plate.jpg` | Registration background — the per-pixel median of the capture |
-| `libHeliosLaserDAC.dylib` | Helios DAC library, found automatically |
-
-`IMG_4250.mov` is the calibration capture and `IMG_4262.jpg` a photo of the
-system running.
+| `review_*.png` | Detected points drawn on the plate, for checking the fit |
+| `session_log.json` | What was heard and what it matched, written on exit |
+| `profiles.json` | Launcher's last selection |
+| `clips*/` | Recordings for `bench_asr.py` |
 
 ## Notes
 
@@ -137,6 +153,17 @@ rate; too low and a faint line appears between the shapes.
 
 **Simulator.** `--sim` swaps the DAC for a window and keeps the same interface,
 including the per-surface maps and fences, so most work needs no hardware.
+
+**Launcher.** `launcher.py` needs tkinter, which a pyenv build without tcl-tk
+does not have. It handles that by running itself on whatever Python can import
+tkinter while starting `app.py` with the virtualenv it finds nearby, so the two
+can be different interpreters. Override with `APP_PYTHON` if that guess is
+wrong. When the selected parts file carries `surface:` tags it stops passing
+`--calib`, since the calibration then comes from the tags.
+
+**Speech engines.** `mlx` (Apple Silicon) and `faster` run locally; `groq`
+uploads each segment to a cloud endpoint and needs `GROQ_API_KEY`. Model names
+accept the shorthands `large`, `medium`, `small`, which resolve per engine.
 
 **Latency.** The tuning knobs are in `speech.py`: `SILENCE_END` decides how long
 to wait after speech before transcribing, `MAX_SEG` force-cuts long utterances.

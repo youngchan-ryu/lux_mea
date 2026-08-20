@@ -1,0 +1,9 @@
+LUX MEA
+Copyright (c) 2026 Team BRIDGE (Lee Yunseo, Ryu Youngchan)
+
+This product bundles libHeliosLaserDAC.dylib, the host library of the
+Helios Laser DAC SDK:
+
+    Copyright (c) 2023 Gitle Mikkelsen
+    Licensed under the MIT License
+    https://github.com/Grix/helios_dac

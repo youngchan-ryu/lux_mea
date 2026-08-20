@@ -4,14 +4,25 @@
 
 Runs against the real alias dictionary in parts.yaml, so editing the dictionary
 breaks this before it breaks a demo."""
+import os
 import yaml
-from match import load_parts, load_links, best_match, score_all, Matcher
+from match import (load_parts, load_links, best_match, score_all,
+                   shared_aliases, Matcher)
+from paths import data_path
 
-spec = yaml.safe_load(open("parts.yaml"))["parts"]
+PARTS = data_path("parts.yaml")
+if not os.path.exists(PARTS):
+    print(f"no dictionary at {PARTS} -- nothing to test against.\n"
+          "data/ is not tracked; build it with the four setup steps in "
+          "MANIFEST.md, or point LUXMEA_DATA at a folder you already have.")
+    raise SystemExit(0)
+
+spec = yaml.safe_load(open(PARTS))["parts"]
 parts = load_parts(spec)
 links = load_links(spec)
 
-CASES = [    # utterance -> expected part, phrased like real presentation speech
+# utterance -> expected part, phrased like real presentation speech
+CASES = [
     ("럭스 메아를 소개합니다",                       "title"),
     ("한 손으로 직접 조작하지 않아도 됩니다",         "text1"),
     ("안전성은 조준과 작동이 정해진 규칙을 따릅니다", "text2"),
@@ -35,7 +46,8 @@ for text, want in CASES:
         print(f"      top={score_all(text, parts)[:3]}")
 print(f"매칭 정확도: {ok}/{len(CASES)}")
 
-PAIRS = [    # naming either side must light both surfaces("camera", "camera_poster"), ("laser", "laser_poster"),
+# naming either side must light both surfaces
+PAIRS = [("camera", "camera_poster"), ("laser", "laser_poster"),
          ("galvo", "galvo_poster"), ("DAC", "DAC_poster"),
          ("electronics", "electronics_poster")]
 link_ok = 0
@@ -51,7 +63,6 @@ print(f"링크 쌍(대칭·양 표면): {link_ok}/{len(PAIRS)}")
 untagged = [pid for pid, p in spec.items() if not p.get("surface")]
 print(f"표면 태그 누락: {untagged or '없음'}")
 
-from match import shared_aliases
 dup = shared_aliases(spec, links)
 print(f"link 없는 중복 별칭: {[(a, p) for a, p in dup] or '없음'}")
 

@@ -20,6 +20,7 @@ import yaml
 import shapes as SH
 from laser import make_output
 from match import load_parts, load_links, shared_aliases, Matcher
+from paths import data_path, data_glob, ensure_data
 
 STATE = {"part": None, "parts": [], "text": "", "t_speech": 0.0, "lat": 0.0,
          "paused": False, "running": True}
@@ -108,7 +109,7 @@ def check_anchors(spec, out, W, H):
     import json
     grids = {}
     for s in out.profiles:
-        path = f"calib_{s}.json" if s else None
+        path = data_path(f"calib_{s}.json") if s else None
         try:
             b = np.array(json.load(open(path)).get("galvo_bounds"), float)
             grids[s] = (b[0], b[1])
@@ -225,10 +226,17 @@ def main():
     a.parts = a.parts or (f"parts_{sfx}.yaml" if sfx else "parts.yaml")
     a.calib = a.calib or (f"calib_{sfx}.json" if sfx else "calib.json")
     if not a.bg:
-        a.bg = f"plate_{sfx}.jpg" if sfx else ("plate.jpg" if os.path.exists("plate.jpg") else None)
+        cand = f"plate_{sfx}.jpg" if sfx else "plate.jpg"
+        a.bg = cand if os.path.exists(data_path(cand)) else None
     print(f"[i] surface={sfx or '(none)'}  parts={a.parts}  calib={a.calib}  bg={a.bg or '-'}")
 
-    spec = yaml.safe_load(open(a.parts))["parts"]
+    parts_path = data_path(a.parts)
+    if not os.path.exists(parts_path):
+        raise SystemExit(
+            f"[!] {parts_path} 없음.\n"
+            f"    data/ 는 추적되지 않는다 — MANIFEST.md 의 셋업 4단계로 만들거나,\n"
+            f"    LUXMEA_DATA 를 기존 폴더로 지정할 것.")
+    spec = yaml.safe_load(open(parts_path))["parts"]
     ids = list(spec)
     links = load_links(spec)
     matcher = Matcher(load_parts(spec), links=links, tie_group=a.tie_group)
@@ -246,29 +254,31 @@ def main():
 
     prompt = build_prompt(spec)
     print(f"[i] Whisper 프롬프트 ({len(ids)}개 부위): {prompt}")
-    bg = cv2.imread(a.bg) if a.bg else None
+    bg = cv2.imread(data_path(a.bg)) if a.bg else None
     if a.bg and bg is None:
         print(f"[!] 배경 이미지를 못 읽음: {a.bg}")
 
     surfaces = [s for s in dict.fromkeys(p.get("surface") for p in spec.values()) if s]
     untagged = [pid for pid, p in spec.items() if not p.get("surface")]
     if surfaces:
-        calib_arg = {s: f"calib_{s}.json" for s in surfaces}
+        calib_arg = {s: data_path(f"calib_{s}.json") for s in surfaces}
         print(f"[i] 이중표면 모드 — 표면 {surfaces}")
         if untagged:
             print(f"[!] surface 태그가 없는 부위 {untagged} — '{surfaces[0]}' 로 간주된다")
     else:
         calib_arg = a.calib
-        if not os.path.exists(calib_arg):
+        if not os.path.exists(data_path(calib_arg)):
             import glob
-            found = sorted(glob.glob("calib_*.json"))
+            found = data_glob("calib_*.json")
             print(f"[!] {calib_arg} 없음.")
             if found:
                 print(f"    있는 캘리브: {found}")
                 print("    → 단일표면이면:  --surface <이름>")
                 print("    → 이중표면이면:  register.py ... --surface <이름> 으로 "
                       "parts.yaml 의 각 부위에 surface 태그를 붙일 것")
-    out = make_output(sim=a.sim, calib_json=calib_arg, bg=bg)
+    out = make_output(sim=a.sim,
+                      calib_json=(calib_arg if isinstance(calib_arg, dict)
+                                  else data_path(calib_arg)), bg=bg)
     cap = cv2.VideoCapture(a.cam) if a.cam >= 0 else None
 
     W, H = 1080, 720
@@ -277,7 +287,7 @@ def main():
     for name, path in (calib_arg.items() if isinstance(calib_arg, dict)
                        else [(None, calib_arg)]):
         try:
-            sz = json.load(open(path)).get("img_size")
+            sz = json.load(open(data_path(path))).get("img_size")
             if sz:
                 sizes[name] = (int(sz[0]), int(sz[1]))
             else:
@@ -359,8 +369,10 @@ def main():
             cap.release()
         cv2.destroyAllWindows()
         if LOG:
+            ensure_data()
             import json
-            json.dump(LOG, open("session_log.json", "w"), ensure_ascii=False, indent=1)
+            json.dump(LOG, open(data_path("session_log.json"), "w"),
+                      ensure_ascii=False, indent=1)
             print(f"[i] session_log.json 저장 ({len(LOG)}건)")
 
 

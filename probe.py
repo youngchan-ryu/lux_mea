@@ -10,6 +10,7 @@ import sys
 
 import cv2
 import numpy as np
+from paths import data_path
 
 
 def main():
@@ -49,7 +50,7 @@ def main():
         print("  ⚠️ 배경이 너무 밝다 — 노출을 더 낮출 것 (목표 평균 70~110)")
     if (gb >= 250).mean() > 0.01:
         print(f"  ⚠️ 포화 픽셀 {(gb>=250).mean()*100:.1f}% — 클리핑되면 색 우세가 소멸한다")
-    cv2.imwrite("probe_bg.png", np.clip(bg, 0, 255).astype(np.uint8))
+    cv2.imwrite(data_path("probe_bg.png"), np.clip(bg, 0, 255).astype(np.uint8))
 
     ts = a.t if a.t else list(np.linspace(0, max(nf - 1, 0) / fps, 8))
     print(f"\n{'t(s)':>7} {'배경대비 최대응답':>16} {'위치':>16} {'코어 BGR':>18} "

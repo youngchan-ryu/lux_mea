@@ -4,11 +4,13 @@
     python3 speech.py rec                record 3 s to test.wav
     python3 speech.py once test.wav      transcribe a file
     python3 speech.py live               realtime
-    python3 speech.py live --model small large | medium | small
+    python3 speech.py live --model small       large | medium | small
+    python3 speech.py live --engine groq       cloud fallback, needs GROQ_API_KEY
 
 The VAD is a plain energy gate with hysteresis, calibrated from the first half
 second of silence. No extra dependency, which matters more than accuracy here."""
 from __future__ import annotations
+import os
 import sys
 import time
 import numpy as np
@@ -20,13 +22,17 @@ MAX_SEG = 3.0
 MIN_SEG = 0.20
 
 MODEL_PRESETS = {
-    "large": "mlx-community/whisper-large-v3-turbo",
-    "medium": "mlx-community/whisper-medium-mlx",
-    "small": "mlx-community/whisper-small-mlx",
-    "large-faster": "large-v3",
-    "medium-faster": "medium",
-    "small-faster": "small",
+    "mlx": {"large": "mlx-community/whisper-large-v3-turbo",
+            "medium": "mlx-community/whisper-medium-mlx",
+            "small": "mlx-community/whisper-small-mlx"},
+    "faster": {"large": "large-v3", "medium": "medium", "small": "small"},
+    "groq": {"large": "whisper-large-v3", "medium": "whisper-large-v3-turbo",
+             "small": "whisper-large-v3-turbo"},
 }
+
+DEFAULT_MODEL = {"mlx": "mlx-community/whisper-medium-mlx",
+                 "faster": "medium",
+                 "groq": "whisper-large-v3-turbo"}
 
 
 class EnergyVAD:
@@ -52,23 +58,54 @@ class EnergyVAD:
 
 
 class ASR:
+    """mlx and faster run locally; groq is a cloud fallback.
+
+    Local is the default. Groq adds a network dependency, so it is there for
+    when a noisy room defeats the local model, not as the normal path. Groq
+    only offers whisper-large-v3 and its turbo distillation, and our metric is
+    match hit rate rather than WER, so pick between them with bench_asr.py.
+    """
+
+    GROQ_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
     def __init__(self, engine="auto", model=None, prompt=""):
-        model = MODEL_PRESETS.get(model, model)
-        self.engine, self.model_name, self._m = engine, model, None
-        self.prompt = prompt
+        self.prompt, self._m = prompt, None
+        self.engine = engine
         if engine == "auto":
             try:
                 import mlx_whisper
                 self.engine = "mlx"
             except ImportError:
                 self.engine = "faster"
-        if self.engine == "mlx":
-            self.model_name = model or "mlx-community/whisper-medium-mlx"
-        else:
-            self.model_name = model or "medium"
+        presets = MODEL_PRESETS.get(self.engine, {})
+        self.model_name = presets.get(model, model) or DEFAULT_MODEL[self.engine]
+        if self.engine == "groq" and not os.environ.get("GROQ_API_KEY"):
+            raise RuntimeError("GROQ_API_KEY is not set")
         print(f"[i] ASR 엔진={self.engine} 모델={self.model_name}")
 
+    def _groq(self, audio: np.ndarray) -> str:
+        """numpy -> WAV in memory -> multipart upload (OpenAI-compatible)."""
+        import io
+        import requests
+        import soundfile as sf
+        buf = io.BytesIO()
+        sf.write(buf, audio, SR, format="WAV", subtype="PCM_16")
+        buf.seek(0)
+        r = requests.post(
+            self.GROQ_URL,
+            headers={"Authorization": f"Bearer {os.environ['GROQ_API_KEY']}"},
+            files={"file": ("seg.wav", buf, "audio/wav")},
+            data={"model": self.model_name, "language": "ko",
+                  "prompt": self.prompt, "response_format": "json",
+                  "temperature": "0"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return (r.json().get("text") or "").strip()
+
     def transcribe(self, audio: np.ndarray) -> str:
+        if self.engine == "groq":
+            return self._groq(audio)
         if self.engine == "mlx":
             import mlx_whisper
             r = mlx_whisper.transcribe(
@@ -104,12 +141,12 @@ def cmd_rec(sec=3.0, path="test.wav"):
         print("  ⚠️ 신호가 거의 없음 — 마이크 권한/입력장치 확인")
 
 
-def cmd_once(path, engine="auto"):
+def cmd_once(path, engine="auto", model=None):
     import soundfile as sf
     a, sr = sf.read(path, dtype="float32")
     if a.ndim > 1:
         a = a.mean(1)
-    asr = ASR(engine)
+    asr = ASR(engine, model)
     t0 = time.time()
     txt = asr.transcribe(a)
     dt = time.time() - t0
@@ -117,12 +154,12 @@ def cmd_once(path, engine="auto"):
     print(f"소요 {dt:.2f}s / 오디오 {len(a)/sr:.2f}s → RTF {dt/(len(a)/sr):.2f}")
 
 
-def cmd_bench(path, engine="auto", n=3):
+def cmd_bench(path, engine="auto", n=3, model=None):
     import soundfile as sf
     a, sr = sf.read(path, dtype="float32")
     if a.ndim > 1:
         a = a.mean(1)
-    asr = ASR(engine)
+    asr = ASR(engine, model)
     asr.transcribe(a)
     ts = []
     for _ in range(n):
@@ -213,9 +250,9 @@ if __name__ == "__main__":
         elif cmd == "rec":
             cmd_rec()
         elif cmd == "once":
-            cmd_once(sys.argv[2], eng)
+            cmd_once(sys.argv[2], eng, mdl)
         elif cmd == "bench":
-            cmd_bench(sys.argv[2], eng)
+            cmd_bench(sys.argv[2], eng, model=mdl)
         elif cmd == "live":
             cmd_live(eng, model=mdl)
         else:
