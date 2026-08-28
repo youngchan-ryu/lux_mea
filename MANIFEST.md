@@ -117,6 +117,18 @@ editing the dictionary later never silently changes what lights up.
 | `device.yaml` | Galvo limits: centre, reachable area, safe fence, blanking length |
 | `libHeliosLaserDAC.dylib` | Helios DAC library, found automatically |
 
+### Documentation — `docs/`
+
+Images the README points at. Tracked, unlike `data/`. The editable sources the
+posters were exported from (`.pptx`, `.pdf`, the circuit `.svg`) are kept
+outside the repository.
+
+| | |
+|---|---|
+| `poster_en.png`, `poster_kr.png` | Exhibition poster, both editions |
+| `circuits_en.png`, `circuits_kr.png` | Drive circuit diagram |
+| `hero.jpg` | The photo at the top of the README |
+
 ### Data — `data/`, not tracked
 
 Everything below is produced by the setup steps above and is specific to one
