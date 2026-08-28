@@ -107,6 +107,7 @@ editing the dictionary later never silently changes what lights up.
 | `test_match.py` | Regression test for matching and links |
 | `launcher.py` | tkinter GUI for running `app.py` without typing flags |
 | `autoregister.py` | Draft parts.yaml entries from OCR or object detection |
+| `mine_vocab.py` | Draft aliases from the script or poster text, via Groq or OpenAI |
 
 ### Configuration
 

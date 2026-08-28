@@ -4,6 +4,7 @@ PyYAML>=6.0
 rapidfuzz>=3.0
 hgtk>=0.2
 pillow>=10.0
+requests>=2.31        # LLM endpoints: mine_vocab.py, speech.py --engine groq
 
 # Speech. Only needed for the live demo; --no-voice and --sim run without them.
 sounddevice>=0.4

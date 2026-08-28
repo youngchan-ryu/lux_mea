@@ -1,0 +1,29 @@
+=== 자동 어휘 마이닝 리포트 ===
+
+[필터]
+[일반어] galvo: '모듈' 제거
+[일반어] laser: '모듈' 제거
+[짧음] tiny: '핀' 제거 (1자)
+[짧음] tiny: '팁' 제거 (1자)
+[모호] '전원' 가 ['psu', 'ballast'] 에 중복 → 전부 제거
+[빈약] accuracy: 별칭 2개 — 검수 시 보강 권장
+[탈락] tiny: 남은 별칭 0개 — 수동 등록 필요
+
+[병합]
+[신규] galvo: anchor 미지정 — register.py 로 위치 등록 필요
+[신규] laser: anchor 미지정 — register.py 로 위치 등록 필요
+[신규] psu: anchor 미지정 — register.py 로 위치 등록 필요
+[신규] ballast: anchor 미지정 — register.py 로 위치 등록 필요
+[신규] accuracy: anchor 미지정 — register.py 로 위치 등록 필요
+[신규] sec_problem: anchor 미지정 — register.py 로 위치 등록 필요
+
+[위치 등록 필요]
+  galvo
+  laser
+  psu
+  ballast
+  accuracy
+  sec_problem
+
+[대본 순서 → TOUR 경로]
+  laser → galvo → sec_problem → psu → ballast → accuracy
