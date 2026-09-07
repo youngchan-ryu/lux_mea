@@ -2,7 +2,6 @@
 
     python3 mine_vocab.py --script script.txt --pdf poster.pdf \
                           --parts parts_mockup.yaml
-    python3 mine_vocab.py --script script.txt --provider groq        # skip the menu
     python3 mine_vocab.py --script script.txt --mock mock_llm.json   # offline
 
 Like autoregister.py this belongs to authoring only -- the LLM is never called
@@ -17,11 +16,7 @@ Outputs:
     parts_<name>_auto.yaml   alias draft, hand to register.py --edit
     vocab_report.txt         what was dropped, and why
 
-Groq or OpenAI, chosen at the prompt unless --provider says which. Groq is the
-free tier and defaults to qwen/qwen3.8-27b; OpenAI defaults to gpt-5.6-terra.
-
-Needs requests, plus pypdf to read a PDF, and the key for whichever endpoint is
-chosen: GROQ_API_KEY or OPENAI_API_KEY.
+Needs requests, plus pypdf to read a PDF. GROQ_API_KEY or OPENAI_API_KEY.
 """
 from __future__ import annotations
 import argparse
@@ -33,7 +28,7 @@ import unicodedata
 
 import yaml
 
-# ─────────────────────────────────────────────────────────── prompt
+# prompt
 SYSTEM = """당신은 발표 자료를 분석해 "레이저 포인터로 물리적으로 지시할 수 있는 부위"를
 추출하는 도구입니다.
 
@@ -75,52 +70,7 @@ JSON만 출력하십시오. 설명·마크다운·코드펜스 금지.
   ]
 }"""
 
-# ─────────────────────────────────────────────────────────── providers
-PROVIDERS = {
-    "groq": {
-        "label": "Groq",
-        "note": "무료 티어",
-        "env": "GROQ_API_KEY",
-        "url": "https://api.groq.com/openai/v1/chat/completions",
-        "model": "qwen/qwen3.8-27b",
-        "docs": "console.groq.com/docs/models",
-        "temperature": 0.2,
-    },
-    "openai": {
-        "label": "OpenAI",
-        "note": "유료",
-        "env": "OPENAI_API_KEY",
-        "url": "https://api.openai.com/v1/chat/completions",
-        "model": "gpt-5.6-terra",
-        "docs": "developers.openai.com/api/docs/models",
-        "temperature": 0.2,
-    },
-}
-
-
-def pick_provider() -> str:
-    """Ask which endpoint to call. Without a terminal, fall back to whichever
-    key is set, and refuse if that is ambiguous."""
-    have = [n for n, p in PROVIDERS.items() if os.environ.get(p["env"])]
-    if not sys.stdin.isatty():
-        if len(have) == 1:
-            print(f"[i] 비대화형 실행 — 키가 있는 {have[0]} 사용")
-            return have[0]
-        sys.exit("[!] 비대화형 실행에서는 --provider groq|openai 를 지정할 것")
-
-    print("\n어느 API로 호출할까요?")
-    for i, (name, p) in enumerate(PROVIDERS.items(), 1):
-        missing = "" if os.environ.get(p["env"]) else f"   ← {p['env']} 없음"
-        print(f"  {i}) {p['label']:6s} ({p['note']})  {p['model']}{missing}")
-    names = list(PROVIDERS)
-    while True:
-        c = input("선택 [1/2]: ").strip()
-        if c in ("1", "2"):
-            return names[int(c) - 1]
-        print("    1 또는 2 를 입력해 주세요")
-
-
-# ─────────────────────────────────────────────────────────── filters
+# filters
 _PARTICLE = re.compile(r"(은|는|이|가|을|를|의|에|에서|으로|로|와|과|도|만)$")
 _GENERIC = {
     "모듈", "신호", "부분", "장치", "시스템", "구성", "요소", "기능", "방식",
@@ -228,7 +178,7 @@ def build_tour(auto: list[dict]) -> list[str]:
     return [p["id"] for p in sorted(ordered, key=lambda x: x["order"])]
 
 
-# ─────────────────────────────────────────────────────────── input, LLM
+# input, LLM
 def read_text(script=None, pdf=None) -> str:
     chunks = []
     if script:
@@ -249,27 +199,30 @@ def read_text(script=None, pdf=None) -> str:
     return "\n\n".join(chunks)
 
 
-def call_llm(text: str, provider: str, model: str, existing_ids: list[str]) -> list[dict]:
+def call_llm(text: str, model: str, existing_ids: list[str]) -> list[dict]:
     import requests
-    prov = PROVIDERS[provider]
-    key = os.environ.get(prov["env"])
+    key = os.environ.get("GROQ_API_KEY")
+    url = "https://api.groq.com/openai/v1/chat/completions"
     if not key:
-        sys.exit(f"[!] {prov['env']} 가 설정되지 않음 — export {prov['env']}=...")
+        key = os.environ.get("OPENAI_API_KEY")
+        url = "https://api.openai.com/v1/chat/completions"
+    if not key:
+        sys.exit("[!] GROQ_API_KEY 또는 OPENAI_API_KEY 필요")
 
     hint = ""
     if existing_ids:
         hint = ("\n\n이미 등록된 부위 id 목록입니다. 같은 대상이면 **동일한 id**를 쓰고, "
                 f"새 부위만 새 id를 부여하세요:\n{', '.join(existing_ids)}")
 
-    r = requests.post(prov["url"], timeout=90,
+    r = requests.post(url, timeout=90,
         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-        json={"model": model, "temperature": prov["temperature"],
+        json={"model": model, "temperature": 0.2,
               "response_format": {"type": "json_object"},
               "messages": [{"role": "system", "content": SYSTEM + hint},
                            {"role": "user", "content": text[:24000]}]})
     if r.status_code >= 400:
-        sys.exit(f"[!] {prov['label']} 오류 {r.status_code}: {r.text[:300]}\n"
-                 f"    모델명을 확인할 것 (--model). 목록: {prov['docs']}")
+        sys.exit(f"[!] LLM 오류 {r.status_code}: {r.text[:300]}\n"
+                 f"    모델명을 확인하세요 (--model). Groq: console.groq.com/docs/models")
     raw = r.json()["choices"][0]["message"]["content"]
     raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
     return json.loads(raw).get("parts", [])
@@ -280,9 +233,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--script"); ap.add_argument("--pdf")
     ap.add_argument("--parts", help="기존 parts.yaml (별칭 보강 대상)")
-    ap.add_argument("--provider", choices=list(PROVIDERS),
-                    help="생략하면 실행할 때 고르게 한다")
-    ap.add_argument("--model", default=None, help="생략하면 provider 기본 모델")
+    ap.add_argument("--model", default="llama-3.3-70b-versatile")
     ap.add_argument("--mock", help="LLM 응답 JSON 파일 (오프라인 검증용)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -297,10 +248,8 @@ def main():
         print(f"[i] mock 응답 사용 — 후보 {len(auto)}개")
     else:
         text = read_text(a.script, a.pdf)
-        provider = a.provider or pick_provider()
-        model = a.model or PROVIDERS[provider]["model"]
-        print(f"[i] 입력 텍스트 {len(text)}자 → {PROVIDERS[provider]['label']} / {model} 호출")
-        auto = call_llm(text, provider, model, list(existing))
+        print(f"[i] 입력 텍스트 {len(text)}자 → LLM({a.model}) 호출")
+        auto = call_llm(text, a.model, list(existing))
         print(f"[i] 후보 {len(auto)}개 추출")
 
     kept, warn = filter_parts(auto)

@@ -108,6 +108,7 @@ editing the dictionary later never silently changes what lights up.
 | `launcher.py` | tkinter GUI for running `app.py` without typing flags |
 | `autoregister.py` | Draft parts.yaml entries from OCR or object detection |
 | `mine_vocab.py` | Draft aliases from the script or poster text, via Groq or OpenAI |
+| `usbprobe.py` | Helios USB diagnosis that stops before the call that panics macOS 26.6.2 |
 
 ### Configuration
 
@@ -116,6 +117,7 @@ editing the dictionary later never silently changes what lights up.
 | `paths.py` | Resolves data file names into `data/` |
 | `device.yaml` | Galvo limits: centre, reachable area, safe fence, blanking length |
 | `libHeliosLaserDAC.dylib` | Helios DAC library, found automatically |
+| `libusb-1.0.0.dylib` | libusb 1.0.26, pinned. **Do not delete** — see Notes |
 
 ### Documentation — `docs/`
 
@@ -152,6 +154,22 @@ finds `data/parts.yaml`. Pass a path with a separator in it to escape that.
 | `clips*/` | Recordings for `bench_asr.py` |
 
 ## Notes
+
+**The pinned libusb.** `libusb-1.0.0.dylib` next to the DAC library is not a
+stray build artefact. Deleting it makes macOS 26.6.2 kernel panic — the whole
+machine reboots — the moment `firstlight.py` or `app.py` opens the DAC.
+
+`libHeliosLaserDAC.dylib` asks for `@rpath/libusb-1.0.0.dylib` and carries
+`LC_RPATH @loader_path`, so dyld looks in this directory first. With the slot
+empty it walks up to the main executable's rpaths and lands on Homebrew's
+libusb 1.0.30, which calls an IOUSBLib method that the 26.6.2 kernel gets wrong
+for this device's descriptor. libusb 1.0.26 never makes that call. Keeping the
+1.0.26 that ships in the Helios SDK here fills the slot the way its author
+intended and takes Homebrew out of the picture entirely.
+
+Run `python3 usbprobe.py` to see which libusb actually gets loaded. It stops
+before the call that panics, so it is safe to run. `handoff/MACOS-USB-PANIC.md`
+has the full diagnosis.
 
 **Changing the hardware.** `device.yaml` holds everything geometry-dependent.
 The reachable area was measured by walking the beam to the edges; the safe box
