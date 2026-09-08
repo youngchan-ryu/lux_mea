@@ -183,7 +183,9 @@ pip install -r requirements.txt
 
 Hardware runs need a Helios DAC. `libHeliosLaserDAC.dylib` ships in this
 directory and is picked up automatically; set `HELIOS_LIB` only if you keep it
-somewhere else. `--engine groq` additionally needs `GROQ_API_KEY`.
+somewhere else. A cloud engine additionally needs a key: `GROQ_API_KEY` for
+`--engine groq`, `CLOVA_SPEECH_SECRET` for `--engine clova` and
+`--engine clova-stream`.
 
 ## Usage
 
@@ -195,6 +197,11 @@ python3 app.py             # live
 
 `app.py --no-voice` gives you number-key control instead of speech, which is
 useful while filming or when the room is too loud to trust the microphone.
+
+`e` swaps the speech engine while running, between `--engine` and
+`--fallback-engine`. A cloud engine that loses the network hands over to the
+local one by itself and says so in the HUD, so a dead venue wifi costs a line
+of text rather than the demo.
 
 There is also a small GUI for running it at a booth, where nobody wants to type
 flags between demos:
@@ -242,21 +249,36 @@ scoring them on *whether the system pointed at the right thing* rather than on
 transcription accuracy — the matcher absorbs a lot of ASR error, so word-level
 accuracy is the wrong metric.
 
-| model | hit rate | median latency |
+| model | hit rate, run 1 / run 2 | median latency |
 |---|---|---|
 | large-v3-turbo | 70% / 40% | 0.49 s |
 | **medium** | **80% / 80%** | **0.38 s** |
 | small | 60% / 70% | 0.14 s |
 
-`medium` won on both accuracy and consistency and is the default. The largest
-model was worse and far more variable, mostly because it hallucinated long
-repeated phrases on quiet segments — we now drop segments that never rose above
-the noise floor rather than sending them to the decoder at all. Raw output is in
-[`bench_asr_result.md`](bench_asr_result.md); rerun it with `bench_asr.py`.
+`medium` is the default: it was the only one that scored the same twice, and it
+is also the fastest of the two larger models. But read the two columns rather
+than the average — the same model scored 70% and then 40% on the same setup.
+Ten clips cannot separate those; the paired test puts a gap that size at
+p ≈ 0.25, which is another way of saying we do not know. What the run does show
+clearly is *how* the big model failed: it hallucinated long repeated phrases on
+quiet segments, so we now drop segments that never rise above the noise floor
+instead of sending them to the decoder at all. Raw output is in
+[`bench_asr_result.md`](bench_asr_result.md).
 
-Everything above runs locally. `--engine groq` sends audio to a cloud endpoint
-instead, which is there for rooms too noisy for the local model; it needs
-`GROQ_API_KEY` and, obviously, a network.
+`bench_asr.py` was rebuilt around that lesson: more clips, noise conditions
+mixed offline so every engine hears identical audio, the decoder prompt on by
+default (the old harness measured a configuration nobody runs), and paired
+statistics in `bench_report.py` instead of two percentages side by side.
+
+Everything above runs locally. Two cloud engines are available for rooms too
+noisy for the local model: `--engine groq`, and CLOVA Speech as either
+`--engine clova` (a segment at a time, like the others) or
+`--engine clova-stream`, which holds one connection open and lets the server
+decide where utterances end. That last one is the interesting case — it removes
+the 0.3 s silence wait and the whole-segment decode from the path between
+saying a part name and the beam moving, which is the latency a listener
+actually notices and the one a clip benchmark cannot see. `bench_asr.py live`
+measures it by replaying a recorded talk through the live path at real time.
 
 ---
 

@@ -53,9 +53,24 @@ def app_python():
 ENGINES = [
     ("mlx (로컬, 기본)", "mlx", ""),
     ("faster (로컬, 경량)", "faster", "small"),
+    ("clova · 스트리밍 (클라우드)", "clova-stream", ""),
+    ("clova · 세그먼트 (클라우드)", "clova", ""),
     ("groq · turbo (클라우드)", "groq", "whisper-large-v3-turbo"),
     ("groq · large-v3 (정확도 우선)", "groq", "whisper-large-v3"),
 ]
+
+# Where a cloud engine hands over when it gives up. Local only -- a fallback
+# that needs the same network as the thing that just failed is not a fallback.
+FALLBACKS = [
+    ("auto (mlx→faster)", "auto"),
+    ("mlx", "mlx"),
+    ("faster", "faster"),
+]
+
+# Which environment variable each cloud engine needs before it will start.
+ENGINE_KEYS = {"groq": "GROQ_API_KEY",
+               "clova": "CLOVA_SPEECH_SECRET",
+               "clova-stream": "CLOVA_SPEECH_SECRET"}
 
 
 def discover(pattern, fallback=None):
@@ -99,6 +114,13 @@ class Launcher:
         self.key_note.grid(row=r, column=1, columnspan=2, **pad); r += 1
         self.engine.bind("<<ComboboxSelected>>", self._check_key)
 
+        ttk.Label(f, text="폴백 엔진").grid(row=r, column=0, **pad)
+        self.fallback = ttk.Combobox(f, width=42, state="readonly",
+                                     values=[e[0] for e in FALLBACKS])
+        self.fallback.grid(row=r, column=1, columnspan=2, **pad); r += 1
+        ttk.Label(f, text="클라우드가 끊기면 여기로 넘어간다. HUD 에서 e 키로 되돌림",
+                  foreground="#555").grid(row=r, column=1, columnspan=2, **pad); r += 1
+
         ttk.Label(f, text="카메라").grid(row=r, column=0, **pad)
         self.cam = ttk.Combobox(f, width=18, state="readonly",
                                 values=["사용 안 함", "0", "1", "2"])
@@ -130,7 +152,8 @@ class Launcher:
                            insertbackground="#ddd")
         self.log.grid(row=r, column=0, columnspan=3, padx=10, pady=4)
 
-        ttk.Label(f, text="실행 중 핫키(HUD 창):  1~9 부위 지정   space 파킹   q 종료",
+        ttk.Label(f, text="실행 중 핫키(HUD 창):  1~9 부위   space 파킹   "
+                          "e 엔진 전환   q 종료",
                   foreground="#555").grid(row=r + 1, column=0, columnspan=3, **pad)
 
         self.load()
@@ -156,6 +179,7 @@ class Launcher:
         pick(self.calib, d.get("calib"))
         pick(self.parts, d.get("parts"))
         pick(self.engine, d.get("engine"))
+        pick(self.fallback, d.get("fallback"))
         pick(self.cam, d.get("cam"))
         self.sim.set(d.get("sim", False))
         self.novoice.set(d.get("novoice", False))
@@ -163,6 +187,7 @@ class Launcher:
     def save(self):
         json.dump({"calib": self.calib.get(), "parts": self.parts.get(),
                    "engine": self.engine.get(), "cam": self.cam.get(),
+                   "fallback": self.fallback.get(),
                    "sim": self.sim.get(), "novoice": self.novoice.get()},
                   open(CFG, "w"), ensure_ascii=False, indent=1)
 
@@ -173,9 +198,10 @@ class Launcher:
 
     def _check_key(self, *_):
         eng = self._engine_tuple()
-        if eng and eng[1] == "groq" and not os.environ.get("GROQ_API_KEY"):
+        var = ENGINE_KEYS.get(eng[1]) if eng else None
+        if var and not os.environ.get(var):
             self.key_note.config(
-                text="⚠ GROQ_API_KEY 미설정 — 터미널에서 export 후 이 앱을 다시 실행")
+                text=f"⚠ {var} 미설정 — 터미널에서 export 후 이 앱을 다시 실행")
         else:
             self.key_note.config(text="")
 
@@ -184,6 +210,12 @@ class Launcher:
             if e[0] == self.engine.get():
                 return e
         return None
+
+    def _fallback_value(self):
+        for label, val in FALLBACKS:
+            if label == self.fallback.get():
+                return val
+        return "auto"
 
 
     def _parts_have_surface(self):
@@ -212,6 +244,7 @@ class Launcher:
             cmd += ["--engine", eng[1]]
             if eng[2]:
                 cmd += ["--model", eng[2]]
+        cmd += ["--fallback-engine", self._fallback_value()]
         if self.sim.get():
             cmd += ["--sim"]
         if self.novoice.get():

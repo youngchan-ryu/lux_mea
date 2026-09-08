@@ -1,0 +1,44 @@
+// CLOVA Speech (NEST) real-time streaming interface.
+//
+// Copied verbatim from the NAVER Cloud Platform documentation,
+// "실시간 스트리밍 인식" -> 1. Protoc Compiler 설치 및 준비.
+// Do not edit: the field numbers and the service/method names are the wire
+// contract. Regenerate the stubs with
+//
+//     python3 -m grpc_tools.protoc -I=. --python_out=. --grpc_python_out=. nest.proto
+//
+// clova.py does that for you into _nest/ if the stubs are missing.
+
+syntax = "proto3";
+option java_multiple_files = true;
+package com.nbp.cdncp.nest.grpc.proto.v1;
+
+enum RequestType {
+  CONFIG = 0;
+  DATA = 1;
+}
+
+message NestConfig {
+  string config = 1;
+}
+
+message NestData {
+  bytes chunk = 1;
+  string extra_contents = 2;
+}
+
+message NestRequest {
+  RequestType type = 1;
+  oneof part {
+    NestConfig config = 2;
+    NestData data = 3;
+  }
+}
+
+message NestResponse {
+  string contents = 1;
+}
+
+service NestService {
+  rpc recognize(stream NestRequest) returns (stream NestResponse){};
+}

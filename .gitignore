@@ -6,3 +6,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# gRPC stubs generated from nest.proto on first use. Build output, not source.
+/_nest/

@@ -11,7 +11,6 @@ Keys: 1-9 pick a part, space parks the beam, q quits."""
 from __future__ import annotations
 import argparse
 import os
-import threading
 import time
 import numpy as np
 import cv2
@@ -23,17 +22,18 @@ from match import load_parts, load_links, shared_aliases, Matcher
 from paths import data_path, data_glob, ensure_data
 
 STATE = {"part": None, "parts": [], "text": "", "t_speech": 0.0, "lat": 0.0,
-         "paused": False, "running": True}
+         "paused": False, "running": True, "engine": ""}
 LOG = []
 
 _FONT = None
 
-def build_prompt(spec, max_chars=300):
-    """Whisper initial_prompt built from the part aliases.
+def alias_terms(spec):
+    """Every part id and alias, deduplicated, in dictionary order.
 
-    A short sentence with the vocabulary inside it works better than a bare comma
-    list, and Whisper truncates the prompt from the front past ~224 tokens, so
-    keep it short enough that it survives intact.
+    One vocabulary, two shapes: Whisper gets it as a decoder prompt, CLOVA as a
+    keyword-boosting list. Sharing the source is what keeps a comparison between
+    the two engines fair -- otherwise a difference in the dictionary would show
+    up as a difference in the model.
     """
     seen, terms = set(), []
     for pid, p in spec.items():
@@ -42,7 +42,17 @@ def build_prompt(spec, max_chars=300):
             if name and name not in seen:
                 seen.add(name)
                 terms.append(name)
-    vocab = ", ".join(terms)
+    return terms
+
+
+def build_prompt(spec, max_chars=300):
+    """Whisper initial_prompt built from the part aliases.
+
+    A short sentence with the vocabulary inside it works better than a bare comma
+    list, and Whisper truncates the prompt from the front past ~224 tokens, so
+    keep it short enough that it survives intact.
+    """
+    vocab = ", ".join(alias_terms(spec))
     if len(vocab) > max_chars:
         vocab = vocab[:max_chars].rsplit(",", 1)[0]
     return f"이것은 장비 부품을 하나씩 가리키며 설명하는 발표입니다. 등장하는 부품: {vocab}."
@@ -149,7 +159,7 @@ def check_anchors(spec, out, W, H):
 
 
 def hud(spec, part_id, text, lat, frame=None, bg=None, size=(1080, 720),
-        group=None):
+        group=None, engine=""):
     """HUD background: live camera frame, else the --bg plate, else black."""
     w, h = size
     group = group or ([part_id] if part_id else [])
@@ -167,32 +177,36 @@ def hud(spec, part_id, text, lat, frame=None, bg=None, size=(1080, 720),
                    3 if hit else 1, cv2.LINE_AA)
         cv2.putText(img, pid, (c[0] + 16, c[1] - 12), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (60, 255, 60) if hit else (110, 110, 110), 1, cv2.LINE_AA)
-    cv2.rectangle(img, (0, h - 74), (w, h), (12, 12, 12), -1)
-    draw_text(img, text[:70], (18, h - 62), (225, 225, 225), 24)
+    cv2.rectangle(img, (0, h - 100), (w, h), (12, 12, 12), -1)
+    draw_text(img, text[:70], (18, h - 92), (225, 225, 225), 24)
     if len(group) > 1:
         label = " + ".join(f"{p}[{spec[p].get('surface') or '-'}]" for p in group)
     else:
         surf = spec.get(part_id, {}).get("surface") if part_id else None
         label = (part_id or "-") + (f" [{surf}]" if surf else "")
     tag = f"target: {label}    latency: {lat*1000:.0f} ms"
-    draw_text(img, tag, (18, h - 30), (60, 255, 60), 20)
+    draw_text(img, tag, (18, h - 60), (60, 255, 60), 20)
+    if engine:
+        # An engine that fell back on its own must never do so quietly -- the
+        # demo keeps running, but the operator has to be able to see why the
+        # accuracy just changed, and that `e` brings the cloud back.
+        warn = ("⚠" in engine) or ("✗" in engine)
+        draw_text(img, f"engine: {engine}", (18, h - 30),
+                  (60, 190, 255) if warn else (150, 150, 150), 18)
     return img
 
 
-def speech_thread(matcher, engine, prompt, model, stop_event):
-    from speech import cmd_live
-
+def make_on_text(matcher):
+    """Recognised text -> matcher -> STATE and the session log."""
     def on_text(txt):
         t0 = time.monotonic()
         pid = matcher.update(txt)
         STATE.update(text=txt, part=pid, parts=list(matcher.current_all),
                      lat=time.monotonic() - t0, t_speech=time.monotonic())
         LOG.append({"t": time.time(), "text": txt, "part": pid,
-                    "parts": list(matcher.current_all)})
-    try:
-        cmd_live(engine, on_text=on_text, prompt=prompt, model=model, stop_event=stop_event)
-    except Exception as e:
-        print(f"[!] 음성 스레드 종료: {e}")
+                    "parts": list(matcher.current_all),
+                    "engine": STATE.get("engine")})
+    return on_text
 
 
 def main():
@@ -207,7 +221,13 @@ def main():
                          "--parts/--calib/--bg를 따로 주면 그쪽이 우선한다.")
     ap.add_argument("--parts", default=None)
     ap.add_argument("--calib", default=None)
-    ap.add_argument("--engine", default="auto")
+    ap.add_argument("--engine", default="auto",
+                    help="주 음성 엔진. auto/mlx/faster (로컬) · groq · "
+                         "clova (세그먼트) · clova-stream (실시간 스트리밍). "
+                         "clova* 는 CLOVA_SPEECH_SECRET 필요")
+    ap.add_argument("--fallback-engine", dest="fallback_engine", default="auto",
+                    help="클라우드 엔진이 끊겼을 때 넘어갈 로컬 엔진. HUD 에서 e 키로 "
+                         "주 엔진과 수동 전환도 된다. 기본 auto (mlx→faster)")
     ap.add_argument("--model", default=None,
                     help="Whisper 모델. large/medium/small 축약어 또는 전체 모델 id. "
                          "기본은 large-v3-turbo. 느리면 medium→small로 낮출 것 — "
@@ -308,20 +328,26 @@ def main():
 
     check_anchors(spec, out, W, H)
 
-    stop_event = threading.Event()
-    voice_thread = None
+    session = None
     if not a.no_voice:
-        voice_thread = threading.Thread(
-            target=speech_thread, args=(matcher, a.engine, prompt, a.model, stop_event),
-            daemon=True)
-        voice_thread.start()
+        from speech import LiveSession
+        session = LiveSession(make_on_text(matcher), prompt=prompt,
+                              boost=alias_terms(spec), primary=a.engine,
+                              primary_model=a.model,
+                              fallback=a.fallback_engine).start()
+        STATE["engine"] = session.status
 
-    print("핫키: 1~9 부위 · space 파킹 · q 종료")
+    print("핫키: 1~9 부위 · space 파킹 · e 엔진 전환 · q 종료")
     print("부위:", {i + 1: p for i, p in enumerate(ids[:9])})
     cur, t_switch = None, 0.0
 
     try:
         while STATE["running"]:
+            if session is not None:
+                # Recovers a worker that died on its own -- done here, on the
+                # main thread, so no thread ever has to join itself.
+                session.poll()
+                STATE["engine"] = session.status
             want = None if STATE["paused"] else STATE["part"]
             group = [] if STATE["paused"] else [p for p in STATE["parts"] if p in spec]
             if want != cur:
@@ -343,7 +369,7 @@ def main():
                 ok, f = cap.read()
                 frame = f if ok else None
             cv2.imshow("HUD", hud(spec, cur, STATE["text"], STATE["lat"], frame, bg,
-                                  (1080, 720), group))
+                                  (1080, 720), group, STATE["engine"]))
 
             k = cv2.waitKey(30) & 0xFF
             if k == ord("q"):
@@ -351,6 +377,9 @@ def main():
             elif k == ord(" "):
                 STATE["paused"] = not STATE["paused"]
                 print("파킹" if STATE["paused"] else "재개")
+            elif k == ord("e") and session is not None:
+                session.toggle()
+                STATE["engine"] = session.status
             elif ord("1") <= k <= ord("9"):
                 i = k - ord("1")
                 if i < len(ids):
@@ -359,11 +388,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        stop_event.set()
-        if voice_thread is not None:
-            voice_thread.join(timeout=3.0)
-            if voice_thread.is_alive():
-                print("[!] 음성 스레드가 3초 안에 안 끝남 — 강제 종료 없이 진행 (드물게 segfault 가능)")
+        if session is not None:
+            session.stop()
         out.park(); out.close()
         if cap:
             cap.release()
